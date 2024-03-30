@@ -6,4 +6,5 @@ This repository has JavaScript code you can paste into your browser's console to
 
 Scrapers
 
+- [WhatsApp Messages](whatsapp-messages.js): Scrape messages from WhatsApp Web
 - [LinkedIn Followers](linkedin-followers.js): 🔴 DEFUNCT. Scrapes followers from LinkedIn
