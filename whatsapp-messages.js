@@ -24,24 +24,37 @@ function whatsappMessages() {
       authorPhone,
       isSystemMessage,
       isRecalled,
+      userId,
     };
     if (isSystemMessage && !isRecalled) result.text = v.outerText;
     if (!isSystemMessage && !isRecalled) {
       // TODO: Image links
       // TODO: Forwarded flag
       result.text = v.querySelector(".selectable-text")?.outerText;
-      result.time = v.querySelector("[data-pre-plain-text]")?.dataset.prePlainText;
-      result.author = v.querySelector('[testid="author"]')?.textContent ?? lastAuthor;
+      result.time = extractDate(v.querySelector("[data-pre-plain-text]")?.dataset.prePlainText);
+      result.author = v.querySelector('[role=""] [dir][aria-label]')?.textContent ?? lastAuthor;
       if (!result.time) console.log("NO TIME", v, result);
     }
     lastAuthor = result.author;
-    const quote = v.querySelector('[aria-label="Quoted Message"]');
+    const quote = v.querySelector('[aria-label="Quoted message" i]');
     if (quote) {
-      result.quoteAuthor = quote.querySelector('[testid="author"]')?.textContent;
+      result.quoteAuthorPhone = quote.querySelector('[role=""] :not([aria-label])')?.textContent;
+      result.quoteAuthorName = quote.querySelector('[role=""] [aria-label]')?.textContent;
       result.quoteText = quote.querySelector(".quoted-mention")?.outerText;
     }
+    const reactions = v.querySelector('[aria-label^="Reactions "],[aria-label^="reaction "]');
+    if (reactions)
+      result.reactions = reactions
+        .getAttribute("aria-label")
+        .replace(/^reactions? */i, "")
+        .replace(/ *in total$/i, "");
     return result;
   });
+}
+
+function extractDate(dateString) {
+  const match = dateString?.match?.(/\[(\d{1,2}:\d{2}\s?[ap]m),\s?(\d{1,2})\/(\d{1,2})\/(\d{4})\]/);
+  return match ? new Date(`${match[4]}-${match[3]}-${match[2]} ${match[1]}`) : null;
 }
 
 export default whatsappMessages;
