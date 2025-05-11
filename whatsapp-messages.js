@@ -3,58 +3,94 @@
 // @description Scrapes WhatsApp messages from WhatsApp web
 // @homepageURL https://github.com/sanand0/cyborg-scraping/blob/main/whatsapp-messages.js
 // @author      Anand S
-// @version     1.0.0
-// @date        2024-03-30
+// @version     1.1.0
+// @date        2025-05-11
 // @namespace   https://github.com/sanand0/cyborg-scraping
 // @license     MIT
-// @copyright   2024, Anand S
+// @copyright   2025, Anand S
 // @include     https://web.whatsapp.com/
 // @run-at      document-start
 // @grant       none
 // ==/UserScript==
 
 function whatsappMessages() {
+  const messages = [];
   let lastAuthor;
-  return Array.from(document.querySelectorAll('#main [role="row"]')).map((v) => {
-    let [isSystemMessage, userId, userDomain, messageId, authorPhone, authorDomain] = v.querySelector("[data-id]").dataset.id.split(/[_@]/);
+  let lastTime;
+  for (const el of document.querySelectorAll('#main [role="row"]')) {
+    let [isSystemMessage, userId, userDomain, messageId, authorPhone, authorDomain] = el
+      .querySelector("[data-id]")
+      .dataset.id.split(/[_@]/);
     isSystemMessage = isSystemMessage === "true";
-    let isRecalled = !!v.querySelector('[data-icon="recalled"]');
-    const result = {
-      messageId,
-      authorPhone,
-      isSystemMessage,
-      isRecalled,
-      userId,
-    };
-    if (isSystemMessage && !isRecalled) result.text = v.outerText;
+    let isRecalled = !!el.querySelector('[data-icon="recalled"]');
+    const message = { messageId, authorPhone, isSystemMessage, isRecalled, userId };
+    if (isSystemMessage && !isRecalled) message.text = el.outerText;
     if (!isSystemMessage && !isRecalled) {
       // TODO: Image links
       // TODO: Forwarded flag
-      result.text = v.querySelector(".selectable-text")?.outerText;
-      result.time = extractDate(v.querySelector("[data-pre-plain-text]")?.dataset.prePlainText);
-      result.author = v.querySelector('[role=""] [dir][aria-label]')?.textContent ?? lastAuthor;
-      if (!result.time) console.log("NO TIME", v, result);
+      message.text = el.querySelector(".selectable-text")?.outerText;
+      message.author = el.querySelector('[role=""] [dir]')?.textContent ?? lastAuthor;
+
+      // Time is often available in data-pre-plain-text="[10:33 am, 8/5/2025] +91 99999 99999: "
+      message.time = extractDate(el.querySelector("[data-pre-plain-text]")?.dataset.prePlainText);
+      // If not, the hh:mm am/pm is available in the last dir="auto"
+      if (!message.time) {
+        const auto = [...el.querySelectorAll('[dir="auto"]')].at(-1);
+        if (auto) message.time = updateTime(lastTime, auto.textContent);
+        else console.log("NO TIME", el, message);
+      }
     }
-    lastAuthor = result.author;
-    const quote = v.querySelector('[aria-label="Quoted message" i]');
+    lastTime = message.time;
+    lastAuthor = message.author;
+
+    // Get quote information if it exists
+    const quote = el.querySelector('[aria-label="Quoted message" i]');
     if (quote) {
-      result.quoteAuthorPhone = quote.querySelector('[role=""] :not([aria-label])')?.textContent;
-      result.quoteAuthorName = quote.querySelector('[role=""] [aria-label]')?.textContent;
-      result.quoteText = quote.querySelector(".quoted-mention")?.outerText;
+      const quoteAuthorNoLabel = quote.querySelector('[role=""] :not([aria-label])')?.textContent;
+      const quoteAuthorLabel = quote.querySelector('[role=""] [aria-label]')?.textContent;
+      if (quoteAuthorLabel) {
+        // Ensure quoteAuthorPhone matches authorPhone format
+        message.quoteAuthorPhone = quoteAuthorNoLabel.replace(/[^0-9]+/g, "");
+        message.quoteAuthor = quoteAuthorLabel;
+      } else message.quoteAuthor = quoteAuthorNoLabel;
+      message.quoteText = quote.querySelector(".quoted-mention")?.outerText;
+      // Find previous message
+      if (message.quoteText)
+        for (let j = messages.length - 1; j >= 0; j--) {
+          const quoteText = message.quoteText.replace(/\s+/gs, " ");
+          if (message.quoteAuthor == messages[j].author && messages[j].text)
+            if (messages[j].text.replace(/\s+/gs, " ").startsWith(quoteText)) {
+              message.quoteMessageId = messages[j].messageId;
+              break;
+            }
+        }
     }
-    const reactions = v.querySelector('[aria-label^="Reactions "],[aria-label^="reaction "]');
+    const reactions = el.querySelector('[aria-label^="Reactions "],[aria-label^="reaction "]');
     if (reactions)
-      result.reactions = reactions
+      message.reactions = reactions
         .getAttribute("aria-label")
         .replace(/^reactions? */i, "")
         .replace(/ *in total$/i, "");
-    return result;
-  });
+    messages.push(message);
+  }
+  return messages;
 }
 
 function extractDate(dateString) {
   const match = dateString?.match?.(/\[(\d{1,2}:\d{2}\s?[ap]m),\s?(\d{1,2})\/(\d{1,2})\/(\d{4})\]/);
   return match ? new Date(`${match[4]}-${match[3]}-${match[2]} ${match[1]}`) : null;
+}
+
+// If lastTime an ISO string and time is like "10:18 pm", return lastTime updated with time as ISO
+function updateTime(lastTime, time) {
+  const [h, m] = time
+    .match(/(\d+):(\d+)\s+(am|pm)/i)
+    .slice(1, 3)
+    .map(Number);
+  const isPM = /pm/i.test(time);
+  const date = lastTime ? new Date(lastTime) : new Date();
+  date.setHours((h % 12) + (isPM ? 12 : 0), m, 0, 0);
+  return date.toISOString();
 }
 
 export default whatsappMessages;
