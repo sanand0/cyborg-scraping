@@ -29,7 +29,12 @@ function whatsappMessages() {
       // TODO: Image links
       // TODO: Forwarded flag
       message.text = el.querySelector(".selectable-text")?.outerText;
-      message.author = el.querySelector('[role=""] [dir]')?.textContent ?? lastAuthor;
+      message.author = el.querySelector('[role=""] [dir]')?.textContent;
+
+      // If it's a system message, e.g. adding/deleting a user, deleting a message, etc. use raw text
+      if (!message.text) message.text = el.textContent;
+      // If it's not a system message and the author is missing, it must be the last author
+      else if (!message.author) message.author = lastAuthor;
 
       // Time is often available in data-pre-plain-text="[10:33 am, 8/5/2025] +91 99999 99999: "
       message.time = extractDate(el.querySelector("[data-pre-plain-text]")?.dataset.prePlainText);
@@ -37,7 +42,8 @@ function whatsappMessages() {
       if (!message.time) {
         const auto = [...el.querySelectorAll('[dir="auto"]')].at(-1);
         if (auto) message.time = updateTime(lastTime, auto.textContent);
-        else console.log("NO TIME", el, message);
+        // This can happen for pinned messages
+        else console.log("MISSING TIME", el, message);
       }
     }
     lastTime = message.time;
@@ -59,6 +65,7 @@ function whatsappMessages() {
         for (let j = messages.length - 1; j >= 0; j--) {
           const quoteText = message.quoteText.replace(/\s+/gs, " ");
           if (message.quoteAuthor == messages[j].author && messages[j].text)
+            // NOTE: If the previous message was edited, we won't find it.
             if (messages[j].text.replace(/\s+/gs, " ").startsWith(quoteText)) {
               message.quoteMessageId = messages[j].messageId;
               break;
@@ -83,10 +90,9 @@ function extractDate(dateString) {
 
 // If lastTime an ISO string and time is like "10:18 pm", return lastTime updated with time as ISO
 function updateTime(lastTime, time) {
-  const [h, m] = time
-    .match(/(\d+):(\d+)\s+(am|pm)/i)
-    .slice(1, 3)
-    .map(Number);
+  const match = time.match(/(\d+):(\d+)\s+(am|pm)/i);
+  if (!match) return null;
+  const [h, m] = match.slice(1, 3).map(Number);
   const isPM = /pm/i.test(time);
   const date = lastTime ? new Date(lastTime) : new Date();
   date.setHours((h % 12) + (isPM ? 12 : 0), m, 0, 0);
